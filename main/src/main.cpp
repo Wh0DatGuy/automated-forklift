@@ -87,9 +87,11 @@ void Move(int M_Type, int TrSpeed = 500, int MotSpeed = 1500, int UpDwSpeed = 12
 }
 //detect color
 int Color_set(int S2state, int S3state, int SensorOut) { //read sensor function
+  int rVal;
   digitalWrite(S2, S2state);
   digitalWrite(S3, S3state);
-  return pulseIn(SensorOut, LOW);
+  rVal = (pulseIn(SensorOut, LOW) + pulseIn(SensorOut, LOW) + pulseIn(SensorOut, LOW))/3;
+  return rVal;
 }
 int Color(int S_Type) {
   int ColorNum;
@@ -104,12 +106,10 @@ int Color(int S_Type) {
     //sprintf(buffer, "%d  %d  %d", R, G, B);
     //Serial.println(buffer);
     //Serial.flush();
-    if ((R <= 39) && (G <= 38) && (B <= 35)) //green
-      ColorNum = 2;
-    else if ((R <= 54) && (G <= 52) && (B <= 31)) //blue
-      ColorNum = 3;
-    else
-      return Color(1);
+      if ((R <= 39) && (G <= 38) && (B <= 35)) //green
+        ColorNum = 2;
+      else if ((R <= 54) && (G <= 52) && (B <= 31)) //blue
+        ColorNum = 3;
     break;
 
   case 2 /*floor sensor*/:
@@ -119,14 +119,12 @@ int Color(int S_Type) {
     //sprintf(buffer, "%d  %d  %d", R, G, B);
     //Serial.println(buffer);
     //Serial.flush();
-    if ((R <= 19) && (G <= 23) && (B <= 26)) //yellow
-      ColorNum = 1;
-    else if ((R <= 41) && (G <= 32) && (B <= 32)) //green
-      ColorNum = 2;
-    else if ((R <= 54) && (G <= 46) && (B <= 28)) //blue
-      ColorNum = 3;
-    else
-      return Color(2);
+      if ((R <= 19) && (G <= 23) && (B <= 26)) //yellow
+        ColorNum = 1;
+      else if ((R <= 41) && (G <= 32) && (B <= 32)) //green
+        ColorNum = 2;
+      else if ((R <= 54) && (G <= 46) && (B <= 28)) //blue
+        ColorNum = 3;
     break;
   }
   return ColorNum;
@@ -167,6 +165,8 @@ bool FwLine() {
 }
 //auto proximity sensors
 unsigned int ReadPxSensor(int Trig, int Echo) {
+  digitalWrite(Trig, LOW);
+  delayMicroseconds(2);
   digitalWrite(Trig, HIGH);
   delayMicroseconds(10);
   digitalWrite(Trig, LOW);
