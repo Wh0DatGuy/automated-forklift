@@ -1,0 +1,11 @@
+add box sense at startup - done
+recalibrate color sensor - done
+check arm direction - done
+start pcb design - done
+add third line following sensor to check for line presence - done
+add ir sensor to program - done
+change rotation sensing using irsensors - done
+add delay to move(stop) function- done
+fix front wheels (motors not touching) - done(maybe)
+aggiustare delay per allinearsi alla linea dopo aver lasciato scatola - done
+aumentare distanza dopo aver lasciato la scatola - done
