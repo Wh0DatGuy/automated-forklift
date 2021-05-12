@@ -1,3 +1,15 @@
+/*
+This program is used to control a forklift lookalike model.
+Said model can lift boxes, follow lines and sense distance from near objects.
+It can be controlled via an IR remote or can be left working on it's own.
+The automated part of the program follows a line until a box is approached, 
+The box has a color that is read by the color sensor on the front.
+It then turns around and carries the box to the correct location, 
+Using the floor color sensor (that will probably be changed).
+The manual commands feature an automatic box lift and drop.
+The distance sensors all around the bot are used to sense obstacles,
+In case of imminent collision it stops and stars beeping.
+*/
 //libraries
 #include <Arduino.h>
 #include <IRLibRecv.h>
