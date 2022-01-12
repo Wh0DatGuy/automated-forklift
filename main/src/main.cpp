@@ -1,154 +1,118 @@
-/*
-This program is used to control a forklift lookalike model.
-Said model can lift boxes, follow lines and sense distance from near objects.
-It can be controlled via an IR remote or can be left working on it's own.
-The automated part of the program follows a line until a box is approached, 
-The box has a color that is read by the color sensor on the front.
-It then turns around and carries the box to the correct location, 
-Using the floor color sensor (that will probably be changed).
-The manual commands feature an automatic box lift and drop.
-The distance sensors all around the bot are used to sense obstacles,
-In case of imminent collision it stops and stars beeping.
-*/
-//libraries
 #include <Arduino.h>
-#include <IRLibRecv.h>
-#include <IRLibDecodeBase.h>
-#include <IRLib_P01_NEC.h>
-#include <IRLibCombo.h>
+#include <Tone.h>
 //pins
-#define stepPinM 22
+#define stepPinM1 22
+#define stepPinM2 35
+#define stepPinT 25
 #define dirPinM1 23
 #define dirPinM2 24
-#define stepPinT 25
 #define dirPinT 26
 #define BUZZER 27
 #define L_IR_SENSOR 28
 #define C_IR_SENSOR 29
 #define R_IR_SENSOR 30
-#define FrEcho 31 //31,33,35,37 (frontale, destra, retro, sinistra)
-#define FrTrig 32 //32,34,36,38
-#define ArEcho 33
-#define ArTrig 34
+#define FrEcho 31 //frontale
+#define FrTrig 32 
+#define BrEcho 33 //retro
+#define BrTrig 34
 #define M_Stop 39
 #define Em_Stop 40
-#define S2 41
-#define S3 42
-#define sensorOut_1 43 //box sensor
-#define sensorOut_2 44 //floor sensor
 #define EndStop 45
-#define IrSensor 46
 //variables
 #define IR_SENSOR_DELAY 200
 #define PROX_SENSOR_DELAY 10
-long t0 = 0;
-bool EnDown;
-bool Box = false;
-int BoxColor, FloorColor;
-
+long t0 = 0, t2;
+bool StandByf = false, BtEn = true, Going = false, FSEn = true, PickBox = false, PutBox = false, TurnLeft = false, TurnRight = false;
+int BoxPos[2], CurBoxPos[2] = { 0, 0 }, CurPos = 0;
+//lib
+Tone Step[3];
 //move
-void Move(int M_Type, int TrSpeed = 500, int MotSpeed = 1500, int UpDwSpeed = 12000) {
+void Move(int M_Type, int TrSpeed = 31) {
+  int UpDwSpeed = 750, MotSpeed = 100;
   bool BUZZERVal = false;
+  StandByf = false;
   switch (M_Type) {
   case 1 /*forward*/:
     digitalWrite(dirPinM2, HIGH);
     digitalWrite(dirPinM1, LOW);
-    tone(stepPinM, MotSpeed);
+    Step[2].stop();
+    Step[0].play(MotSpeed);
+    Step[1].play(MotSpeed);
     break;
 
   case 2 /*backwards*/:
     digitalWrite(dirPinM2, LOW);
     digitalWrite(dirPinM1, HIGH);
     BUZZERVal = true;
-    tone(stepPinM, MotSpeed);
+    Step[2].stop();
+    Step[0].play(MotSpeed);
+    Step[1].play(MotSpeed);
     break;
 
-  case 3 /*left*/:
+  case 3 /*sharp left*/:
     digitalWrite(dirPinM2, HIGH);
     digitalWrite(dirPinM1, HIGH);
     BUZZERVal = true;
-    tone(stepPinM, TrSpeed);
+    Step[2].stop();
+    Step[0].play(TrSpeed);
+    Step[1].play(TrSpeed);
     break;
 
-  case 4 /*right*/:
+  case 4 /*sharp right*/:
     digitalWrite(dirPinM2, LOW);
     digitalWrite(dirPinM1, LOW);
     BUZZERVal = true;
-    tone(stepPinM, TrSpeed);
+    Step[2].stop();
+    Step[0].play(TrSpeed);
+    Step[1].play(TrSpeed);
     break;
 
   case 5 /*up*/:
     digitalWrite(dirPinT, LOW);
-    noTone(stepPinM);
-    tone(stepPinT, UpDwSpeed);
+    Step[0].stop();
+    Step[1].stop();
+    Step[2].play(UpDwSpeed);
     break;
 
   case 6 /*down*/:
     digitalWrite(dirPinT, HIGH);
-    noTone(stepPinM);
-    tone(stepPinT, UpDwSpeed);
+    Step[0].stop();
+    Step[1].stop();
+    Step[2].play(UpDwSpeed);
     break;
 
   case 7 /*stop*/:
-    noTone(stepPinT);
-    noTone(stepPinM);
+    Step[0].stop();
+    Step[1].stop();
+    Step[2].stop();
+    StandByf = true;
+    break;
+
+  case 8 /*slow left*/:
+    digitalWrite(dirPinM2, HIGH);
+    digitalWrite(dirPinM1, LOW);
+    Step[2].stop();
+    Step[0].play(MotSpeed / 2);
+    Step[1].play(MotSpeed);
+    break;
+
+  case 9 /*slow right*/:
+    digitalWrite(dirPinM2, HIGH);
+    digitalWrite(dirPinM1, LOW);
+    Step[2].stop();
+    Step[0].play(MotSpeed);
+    Step[1].play(MotSpeed / 2);
     break;
   }
-
   digitalWrite(BUZZER, BUZZERVal);
 }
-//detect color
-int Color_set(int S2state, int S3state, int SensorOut) { //read sensor function
-  int rVal;
-  digitalWrite(S2, S2state);
-  digitalWrite(S3, S3state);
-  rVal = (pulseIn(SensorOut, LOW) + pulseIn(SensorOut, LOW) + pulseIn(SensorOut, LOW))/3;
-  return rVal;
-}
-int Color(int S_Type) {
-  int ColorNum;
-  int R, G, B;
-  //char buffer[10];
-
-  switch (S_Type) { //selecting sensor
-  case 1 /*box sensor*/:
-    R = Color_set(LOW, LOW, sensorOut_1);
-    G = Color_set(HIGH, HIGH, sensorOut_1);
-    B = Color_set(LOW, HIGH, sensorOut_1);
-    //sprintf(buffer, "%d  %d  %d", R, G, B);
-    //Serial.println(buffer);
-    //Serial.flush();
-      if ((R <= 39) && (G <= 38) && (B <= 35)) //green
-        ColorNum = 2;
-      else if ((R <= 54) && (G <= 52) && (B <= 31)) //blue
-        ColorNum = 3;
-    break;
-
-  case 2 /*floor sensor*/:
-    R = Color_set(LOW, LOW, sensorOut_2);
-    G = Color_set(HIGH, HIGH, sensorOut_2);
-    B = Color_set(LOW, HIGH, sensorOut_2);
-    //sprintf(buffer, "%d  %d  %d", R, G, B);
-    //Serial.println(buffer);
-    //Serial.flush();
-      if ((R <= 19) && (G <= 23) && (B <= 26)) //yellow
-        ColorNum = 1;
-      else if ((R <= 41) && (G <= 32) && (B <= 32)) //green
-        ColorNum = 2;
-      else if ((R <= 54) && (G <= 46) && (B <= 28)) //blue
-        ColorNum = 3;
-    break;
-  }
-  return ColorNum;
-}
 //emergency stop
+bool bluetooth();
 void EmStop() {
   digitalWrite(Em_Stop, HIGH);
   Move(7);
-  delay(500);
-  digitalWrite(BUZZER, HIGH);
-  digitalWrite(M_Stop, HIGH);
-  while (true) { }
+  t2 = millis();
+  BtEn = true;
 }
 //follow line
 bool FwLine() {
@@ -157,15 +121,15 @@ bool FwLine() {
     Move(7);
     OLine = true;
   } else if (digitalRead(L_IR_SENSOR)) {
-    Move(3, 1500);
+    Move(8);
     t0 = millis();
   } else if (digitalRead(R_IR_SENSOR)) {
-    Move(4, 1500);
+    Move(9);
     t0 = millis();
   } else {
     Move(1);
     if (!digitalRead(C_IR_SENSOR)) {
-      if ((millis() - t0) >= 900) {
+      if ((millis() - t0) >= 500) {
         //Serial.println("line not detected");
         EmStop();
       }
@@ -175,53 +139,74 @@ bool FwLine() {
   }
   return OLine;
 }
-//auto proximity sensors
-unsigned int ReadPxSensor(int Trig, int Echo) {
-  digitalWrite(Trig, LOW);
-  delayMicroseconds(2);
-  digitalWrite(Trig, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(Trig, LOW);
-  return ((pulseIn(Echo, HIGH)) * 0.34 / 2);
-}
-void AProxSensor(int Ap_Type, bool EnFrontSn = true) {
+//read proximity sensors
+int ReadPxSensor(int Trig, int Echo, int Sel = 0) {
+  static int Dist[2], oSel;
   static long t1;
+  if ((millis() - t1) >= 60 || oSel != Sel) {
+    digitalWrite(Trig, LOW);
+    delayMicroseconds(2);
+    digitalWrite(Trig, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(Trig, LOW);
+    Dist[Sel] = (pulseIn(Echo, HIGH) / 2) * 0.343;
+    oSel = Sel;
+    t1 = millis();
+  }
+  //Serial.println(Dist[Sel]);
+  return Dist[Sel];
+}
+//auto proximity sensors
+bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
+  static bool BoxReady = false;
   switch (Ap_Type) {
   case 1 /*emergency stop*/:
-    if ((millis() - t1) >= 500) {
-      if (EnFrontSn) {
-        if (ReadPxSensor(FrTrig, FrEcho) < 120) {
-          //Serial.print("proximity sensor error front");
-          EmStop();
-        }
-      }
-      if (ReadPxSensor(ArTrig, ArEcho) < 100) {
-        //Serial.print("proximity sensor error sides");
-        EmStop();
-      }
-      t1 = millis();
+    if ((ReadPxSensor(FrTrig, FrEcho) < 150) && (EnFrontSn)) {
+      //Serial.print("proximity sensor error front");
+      EmStop();
+    }
+    if ((ReadPxSensor(BrTrig, BrEcho, 1) < 100)) {
+      //Serial.print("proximity sensor error back");
+      EmStop();
     }
     break;
 
   case 2 /*box aproaching at pick-up*/:
-    while (ReadPxSensor(FrTrig, FrEcho) > 25) {
-      FwLine();
-      AProxSensor(1, false);
-      delay(PROX_SENSOR_DELAY);
+    if (ReadPxSensor(FrTrig, FrEcho) < 28) {//remember to disable front emergency sensor
+      BoxReady = true;
     }
     break;
 
   case 3 /*box clearance at departure*/:
-    Move(2);
-    while (ReadPxSensor(FrTrig, FrEcho) < 170) {
-      AProxSensor(1, false);
-      delay(PROX_SENSOR_DELAY);
+    if (ReadPxSensor(FrTrig, FrEcho) > 170) {//remember to disale front emergency sensor
+      BoxReady = true;
     }
     break;
   }
+  return BoxReady;
+}
+//edge function
+bool IfUpOrDwSn(byte Pin2Read, bool Mode) {
+  static bool fState = false;
+  bool ReturnVal = false;
+  bool bn = digitalRead(Pin2Read);
+  if (!Mode) {
+    bn = !bn;
+  }
+  if (!bn) {
+    fState = true;
+  } else if (fState && bn) {
+    ReturnVal = true;
+    fState = false;
+  }
+  return ReturnVal;
 }
 //auto move
-void AMove(int AM_Type) {
+bool AMove(int AM_Type, unsigned int DelayVal = 200) {
+  static int IfCount;
+  bool fTurn = false;
+  static long t3, t4;
+  static bool EnDown;
   switch (AM_Type) {
   case 0 /*auto up*/:
     Move(5);
@@ -232,174 +217,239 @@ void AMove(int AM_Type) {
 
   case 1 /*auto down*/:
     if (EnDown) {
+      t4 = millis();
       Move(6);
-      delay(4300);
+      while ((millis() - t4) <= 4300) {
+        AProxSensor(1);
+      }
       Move(7);
       EnDown = false;
     }
     break;
 
   case 2 /*line jump*/:
-    Move(1);
-    delay(400);
+    t3 = millis();
+    while ((millis() - t3) <= DelayVal) {
+      Move(1);
+      AProxSensor(1);
+    }
     t0 = millis();
     break;
 
-  case 3 /*180*/:
   case 4 /*90 left*/:
-    Move(3);
-    while (digitalRead(L_IR_SENSOR)) {
-      AProxSensor(1);
+    if (IfUpOrDwSn(L_IR_SENSOR, 0) && (IfCount == 0)) {
+      IfCount = 1;
+    } else if (IfUpOrDwSn(L_IR_SENSOR, 1) && (IfCount == 1)) {
+      IfCount = 2;
     }
-    delay(IR_SENSOR_DELAY);
-    while (!digitalRead(L_IR_SENSOR)) {
-      AProxSensor(1);
-    }
-    delay(IR_SENSOR_DELAY);
-    while (digitalRead(L_IR_SENSOR)) {
-      AProxSensor(1);
-    }
-    delay(IR_SENSOR_DELAY);
     t0 = millis();
     break;
 
   case 5 /*90 right*/:
-    Move(4);
-    while (digitalRead(R_IR_SENSOR)) {
-      AProxSensor(1);
+    if (IfUpOrDwSn(R_IR_SENSOR, 0) && (IfCount == 0)) {
+      IfCount = 1;
+    } else if (IfUpOrDwSn(R_IR_SENSOR, 1) && (IfCount == 1)) {
+      IfCount = 2;
     }
-    delay(IR_SENSOR_DELAY);
-    while (!digitalRead(R_IR_SENSOR)) {
-      AProxSensor(1);
-    }
-    delay(IR_SENSOR_DELAY);
-    while (digitalRead(R_IR_SENSOR)) {
-      AProxSensor(1);
-    }
-    delay(IR_SENSOR_DELAY);
     t0 = millis();
     break;
   }
+  if (IfCount == 2) {
+    IfCount = 0;
+    fTurn = true;
+  }
+  return fTurn;
 }
-//ir remote
-IRrecv irrecv(IrSensor);
-IRdecode Signal;
+//turn off motors
+void StandBy() {
+  if (StandByf) {
+    if (millis() - t2 >= 5000) {
+      digitalWrite(M_Stop, HIGH);
+      t2 = millis();
+    }
+  } else {
+    t2 = millis();
+    digitalWrite(M_Stop, LOW);
+  }
+}
+//bluetooth
+bool bluetooth() {
+  static bool OverWrite = false;
+  while (Serial3.available()) {
+    switch (Serial3.read()) {
+    case 'F' /*forward*/:
+      Move(1);
+      break;
 
-void IrRemote() {
-  irrecv.enableIRIn();
-  bool IrActive = true;
+    case 'L' /*left*/:
+      Move(3);
+      break;
 
-  while (IrActive) {
-    AProxSensor(1);
-    if (irrecv.getResults()) {
-      Signal.decode();
-      //Serial.println(Signal.value);
-      switch (Signal.value) {
-      case 16718055 /*forward*/:
-        Move(1);
-        break;
+    case 'A' /*slight left*/:
+      Move(8);
+      break;
 
-      case 16716015 /*left*/:
-        Move(3);
-        break;
+    case 'R' /*right*/:
+      Move(4);
+      break;
 
-      case 16734885 /*right*/:
-        Move(4);
-        break;
+    case 'X' /*slight right*/:
+      Move(9);
+      break;
 
-      case 16730805 /*back*/:
-        Move(2);
-        break;
+    case 'B' /*back*/:
+      Move(2);
+      break;
 
-      case 16738455 /*pick up*/:
-        while (ReadPxSensor(FrTrig, FrEcho) > 25) {
-          Move(1);
-          delay(PROX_SENSOR_DELAY);
-        }
-        AMove(0);
-        break;
+    case 'S' /*stop*/:
+      Move(7);
+      break;
 
-      case 16756815 /*put down*/:
-        AMove(1);
-        while (ReadPxSensor(FrTrig, FrEcho) < 170) {
-          Move(2);
-          delay(PROX_SENSOR_DELAY);
-        }
-        Move(7);
-        break;
+    case 'U' /*dist off*/:
+      OverWrite = true;
+      break;
 
-      case 16750695 /*stop*/:
-        Move(7);
-        break;
+    case 'V' /*dist on*/:
+      OverWrite = false;
+      break;
 
-      case 16726215 /*OK*/:
-        IrActive = false;
-        break;
-      }
-      irrecv.enableIRIn();
+    case 'O' /*OK*/:
+      digitalWrite(M_Stop, LOW);
+      Move(7);
+      digitalWrite(Em_Stop, LOW);
+      t0 = millis();
+      BtEn = false;
+      break;
     }
   }
-  irrecv.disableIRIn();
-  Move(7);
+  StandBy();
+  return OverWrite;
+}
+//barcode scanner
+bool SerialBarcode() {
+  byte AcceptScan[7] = { 2,0,0,1,0,51,49 };
+  byte StartScan[9] = { 0x7E,0x00,0x08,0x01,0x00,0x02,0x01,0xAB,0xCD };
+  static int i = 0;
+  static bool EnRecvScan, fAcceptScan = true;
+  bool ScanFin = false;
+  if (EnRecvScan) {
+    while (Serial2.available()) {
+      switch (Serial2.read()) {
+      case 's':
+        BoxPos[0] = Serial2.parseInt();
+        break;
+      case 'p':
+        BoxPos[1] = Serial2.parseInt();
+        break;
+      case 'f':
+        i = 0;
+        EnRecvScan = false;
+        fAcceptScan = true;
+        ScanFin = true;
+        break;
+      }
+    }
+  } else if (Serial2.available()) {
+    byte RecvScan = Serial2.read();
+    if ((RecvScan == AcceptScan[i]) && fAcceptScan) {
+      fAcceptScan = true;
+      i++;
+    } else {
+      fAcceptScan = false;
+    }
+    if (fAcceptScan && (i == 6)) {
+      EnRecvScan = true;
+    }
+  } else if (i == 0) {
+    Serial2.write(StartScan, sizeof(StartScan));
+  }
+  return ScanFin;
 }
 //main program
 void setup() {
-  pinMode(stepPinM, OUTPUT);
+  //Serial.begin(9600);
+  Serial3.begin(9600);
+  Serial2.begin(9600);
   pinMode(dirPinM1, OUTPUT);
   pinMode(dirPinM2, OUTPUT);
-  pinMode(stepPinT, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
   pinMode(dirPinT, OUTPUT);
+  Step[0].begin(stepPinM1);
+  Step[1].begin(stepPinM2);
+  Step[2].begin(stepPinT);
+  pinMode(BUZZER, OUTPUT);
   pinMode(M_Stop, OUTPUT);
-  pinMode(S2, OUTPUT);
-  pinMode(S3, OUTPUT);
   pinMode(Em_Stop, OUTPUT);
   pinMode(FrTrig, OUTPUT);
-  pinMode(ArTrig, OUTPUT);
+  pinMode(BrTrig, OUTPUT);
   digitalWrite(FrTrig, LOW);
-  digitalWrite(ArTrig, LOW);
-  AMove(0);
+  digitalWrite(BrTrig, LOW);
+  AMove(0);//reset fork position
   AMove(1);
-  //Serial.begin(9600);
-  IrRemote();
+  t0 = millis();
 }
 
 void loop() {
-  AProxSensor(1);
-  if (FwLine()) {
-    //while (true){Color(2);Move(7);} //decomment for floor color calibration
-    FloorColor = Color(2);
-    if (FloorColor == 1) { //red
-      if (!Box) { //check if already have box
-        AMove(2);       //jump line
-        AProxSensor(2); //approach box
-        BoxColor = Color(1);
-        AMove(0); //lift box
-        //while (true) {Color(1);}//decomment for box color calibration
-        AMove(3);   //turn around
-        Box = true; //signal box picked up
-      } else {
-        AMove(3); //turn around
-      }
-    } else if ((BoxColor == FloorColor) && Box) { //green or blue
-      AMove(5); //turn right
-      while (!FwLine()) {
-        AProxSensor(1);
-      }         //wait for stop
-      AMove(1); //lower box
-      AProxSensor(3); //leave deposit location
-      AMove(3);       //turn around
-      while (!FwLine()) {
-        AProxSensor(1);
-      }         //wait for stop
-      AMove(2); //skip line
-      delay(800);
-      AMove(4);    //turn left to pick up next box
-      Box = false; //signal box put down
-    } else if (FloorColor == 3) { //blue
-      AMove(3); //turn around end of the trace
-    } else {
-      AMove(2); //not right place, go on
+  if (BtEn) {
+    if (!bluetooth()) {
+      AProxSensor(1, 1);
     }
+  } else {
+    if ((!(TurnLeft || TurnRight)) && FwLine()) {
+      if ((!Going) && (CurBoxPos[0] == 0)) {
+        AMove(2);
+        FSEn = false;
+        PickBox = true;
+      }
+      if (Going && (CurPos == 2)) {
+        FSEn = false;
+        PutBox = true;
+      }
+      if (Going) {
+        CurBoxPos[CurPos] ++;
+        AMove(2);
+      } else {
+        CurBoxPos[CurPos] --;
+        AMove(2);
+      }
+      if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
+        if (Going) {
+          CurPos++;
+          TurnRight = true;
+        } else {
+          CurPos--;
+          TurnLeft = true;
+        }
+      }
+    }
+    if (PickBox && AProxSensor(2)) {
+      Move(7);
+      //if (SerialBarcode()) {
+      AMove(0);
+      TurnRight = true;
+      FSEn = true;
+      Going = true;
+      PickBox = false;
+      //}
+    } else if (TurnLeft) {
+      Move(3);
+      if (AMove(4)) {
+        TurnLeft = false;
+      }
+    } else if (TurnRight) {
+      Move(4);
+      if (AMove(5)) {
+        TurnRight = false;
+      }
+    } else if (PutBox) {//to check
+      AMove(1);
+      Move(2);
+      if (AProxSensor(3)) {
+        TurnLeft = true;
+        FSEn = true;
+        Going = false;
+        PutBox = false;
+      }
+    }
+    AProxSensor(1, FSEn);
   }
 }
