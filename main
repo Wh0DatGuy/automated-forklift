@@ -107,7 +107,6 @@ void Move(int M_Type, int TrSpeed = 500) {
   digitalWrite(BUZZER, BUZZERVal);
 }
 //emergency stop
-bool bluetooth();
 void EmStop() {
   digitalWrite(Em_Stop, HIGH);
   Move(7);
@@ -172,13 +171,13 @@ bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
     break;
 
   case 2 /*box aproaching at pick-up*/:
-    if (ReadPxSensor(FrTrig, FrEcho) < 28) {//remember to disable front emergency sensor
+    if (ReadPxSensor(FrTrig, FrEcho) < 28) {
       BoxReady = true;
     }
     break;
 
   case 3 /*box clearance at departure*/:
-    if (ReadPxSensor(FrTrig, FrEcho) > 170) {//remember to disale front emergency sensor
+    if (ReadPxSensor(FrTrig, FrEcho) > 170) {
       BoxReady = true;
     }
     break;
@@ -399,17 +398,16 @@ void loop() {
         AMove(2);
         FSEn = false;
         PickBox = true;
-      }
-      if (Going && (CurPos == 2)) {
-        FSEn = false;
-        PutBox = true;
-      }
-      if (Going) {
+      } else if (Going) {
         CurBoxPos[CurPos] ++;
         AMove(2);
       } else {
         CurBoxPos[CurPos] --;
         AMove(2);
+      } 
+      if (Going && (CurPos == 2)) {
+        FSEn = false;
+        PutBox = true;
       }
       if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
         if (Going) {
