@@ -22,8 +22,8 @@
 #define IR_SENSOR_DELAY 200
 #define PROX_SENSOR_DELAY 10
 long t0 = 0, t2;
-bool StandByf = false, BtEn = true, Going = false, FSEn = true, PickBox = false, PutBox = false, TurnLeft = false, TurnRight = false;
-int BoxPos[2], CurBoxPos[2] = { 0, 0 }, CurPos = 0;
+bool StandByf = false, BtEn = true, Going = false, FSEn = true, PickBox = false, PutBox = false, TurnLeft = false, TurnRight = false, ReturnLine = false;
+int BoxPos[3], CurBoxPos[3] = { 0, 0, 0 }, CurPos = 0;
 //lib
 Tone Step[3];
 //move
@@ -164,12 +164,11 @@ int ReadPxSensor(int Trig, int Echo, int Sel = 0) {
     oSel = Sel;
     t1 = millis();
   }
-  //Serial.println(Dist[Sel]);
   return Dist[Sel];
 }
 //auto proximity sensors
 bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
-  static bool BoxReady = false;
+  bool BoxReady = false;
   switch (Ap_Type) {
   case 1 /*emergency stop*/:
     if ((ReadPxSensor(FrTrig, FrEcho) < 150) && (EnFrontSn)) {
@@ -183,13 +182,13 @@ bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
     break;
 
   case 2 /*box aproaching at pick-up*/:
-    if (ReadPxSensor(FrTrig, FrEcho) < 28) {//remember to disable front emergency sensor
+    if (ReadPxSensor(FrTrig, FrEcho) < 25) {
       BoxReady = true;
     }
     break;
 
   case 3 /*box clearance at departure*/:
-    if (ReadPxSensor(FrTrig, FrEcho) > 170) {//remember to disale front emergency sensor
+    if (ReadPxSensor(FrTrig, FrEcho) > 170) {
       BoxReady = true;
     }
     break;
@@ -197,7 +196,7 @@ bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
   return BoxReady;
 }
 //edge function
-bool IfUpOrDwSn(byte Pin2Read, bool Mode) {
+bool IfUpOrDwSn(byte Pin2Read, bool Mode) {//Mode = 0 (up), 1 (down)
   static bool fState = false;
   bool ReturnVal = false;
   bool bn = digitalRead(Pin2Read);
@@ -230,9 +229,7 @@ bool AMove(int AM_Type, unsigned int DelayVal = 200) {
     if (EnDown) {
       t4 = millis();
       Move(6);
-      while ((millis() - t4) <= 4300) {
-        AProxSensor(1);
-      }
+      while ((millis() - t4) <= 4300) { }
       Move(7);
       EnDown = false;
     }
@@ -272,6 +269,7 @@ bool AMove(int AM_Type, unsigned int DelayVal = 200) {
   return fTurn;
 }
 //bluetooth
+void(*Riavvia)(void) = 0;
 void bluetooth() {
   static bool OverWrite = false;
   while (Serial3.available()) {
@@ -331,6 +329,10 @@ void bluetooth() {
       t0 = millis();
       BtEn = false;
       break;
+
+    case 'C':
+      Riavvia();
+      break;
     }
   }
   AProxSensor(1, !OverWrite);
@@ -343,37 +345,43 @@ bool SerialBarcode() {
   static int i = 0;
   static bool EnRecvScan, fAcceptScan = true;
   bool ScanFin = false;
-  if (EnRecvScan) {
-    while (Serial2.available()) {
-      switch (Serial2.read()) {
-      case 's':
-        BoxPos[0] = Serial2.parseInt();
-        break;
-      case 'p':
-        BoxPos[1] = Serial2.parseInt();
-        break;
-      case 'f':
-        i = 0;
-        EnRecvScan = false;
-        fAcceptScan = true;
-        ScanFin = true;
-        break;
+  while (!ScanFin) {
+    if (EnRecvScan) {
+      while (Serial2.available()) {
+        switch (Serial2.read()) {
+        case 's':
+          BoxPos[0] = Serial2.parseInt();
+          break;
+        case 'p':
+          BoxPos[1] = Serial2.parseInt();
+          break;
+        case 'f':
+          i = 0;
+          EnRecvScan = false;
+          fAcceptScan = true;
+          ScanFin = true;
+          break;
+        }
       }
+    } else if (Serial2.available()) {
+      byte RecvScan = Serial2.read();
+      if ((RecvScan == AcceptScan[i]) && fAcceptScan) {
+        fAcceptScan = true;
+        i++;
+      } else {
+        fAcceptScan = false;
+      }
+      if (fAcceptScan && (i == 6)) {
+        EnRecvScan = true;
+      }
+    } else if (i == 0) {
+      Serial2.write(StartScan, sizeof(StartScan));
     }
-  } else if (Serial2.available()) {
-    byte RecvScan = Serial2.read();
-    if ((RecvScan == AcceptScan[i]) && fAcceptScan) {
-      fAcceptScan = true;
-      i++;
-    } else {
-      fAcceptScan = false;
-    }
-    if (fAcceptScan && (i == 6)) {
-      EnRecvScan = true;
-    }
-  } else if (i == 0) {
-    Serial2.write(StartScan, sizeof(StartScan));
   }
+  //Serial.print("shelf");
+  //Serial.print(BoxPos[0]);
+  //Serial.print("position");
+  //Serial.println(BoxPos[1]);
   return ScanFin;
 }
 //main program
@@ -394,6 +402,7 @@ void setup() {
   pinMode(BrTrig, OUTPUT);
   digitalWrite(FrTrig, LOW);
   digitalWrite(BrTrig, LOW);
+  digitalWrite(M_Stop, LOW);
   AMove(0);//reset fork position
   AMove(1);
   t0 = millis();
@@ -403,30 +412,34 @@ void loop() {
   if (BtEn) {
     bluetooth();
   } else {
-    if (!(TurnLeft || TurnRight || PickBox || PutBox) && FwLine()) {
-      if ((!Going) && (CurBoxPos[0] == 0)) {
-        AMove(2);
-        FSEn = false;
-        PickBox = true;
-      }
-      if (Going && (CurPos == 2)) {
-        FSEn = false;
-        PutBox = true;
-      }
-      if (Going && !(CurBoxPos[0] == 0)) {
-        CurBoxPos[CurPos] ++;
-        AMove(2);
-      } else {
-        CurBoxPos[CurPos] --;
-        AMove(2);
-      }
-      if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
-        if (Going) {
+    if (!(TurnLeft || TurnRight || PickBox || PutBox || ReturnLine) && FwLine()) {
+      if (Going) {
+        if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
           CurPos++;
-          TurnRight = true;
+          if (CurPos < 3) {
+            TurnRight = true;
+          }
         } else {
-          CurPos--;
-          TurnLeft = true;
+          CurBoxPos[CurPos] ++;
+          AMove(2);
+        }
+        if (CurPos == 3) {
+          FSEn = false;
+          PutBox = true;
+        }
+      } else {//add delay to line jump during return
+        if ((CurPos == 0) && (CurBoxPos[0] == 0)) {
+          AMove(2);
+          FSEn = false;
+          PickBox = true;
+        } else {
+          if (CurBoxPos[CurPos] == 0) {
+            CurPos--;
+            ReturnLine = true;
+          } else {
+            CurBoxPos[CurPos] --;
+            AMove(2);
+          }
         }
       }
     }
@@ -449,7 +462,7 @@ void loop() {
       if (AMove(5)) {
         TurnRight = false;
       }
-    } else if (PutBox) {//to check
+    } else if (PutBox) {
       AMove(1);
       Move(2);
       if (AProxSensor(3)) {
@@ -457,6 +470,12 @@ void loop() {
         FSEn = true;
         Going = false;
         PutBox = false;
+      }
+    } else if (ReturnLine) {
+      Move(1);
+      if(IfUpOrDwSn(C_IR_SENSOR, 0)) {
+        TurnLeft = true;
+        ReturnLine = false;
       }
     }
     AProxSensor(1, FSEn);
