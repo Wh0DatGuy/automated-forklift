@@ -435,7 +435,9 @@ void loop() {
         } else {
           if (CurBoxPos[CurPos] == 0) {
             CurPos--;
-            ReturnLine = true;
+            if (CurPos != 0) {
+             ReturnLine = true;
+            }
           } else {
             CurBoxPos[CurPos] --;
             AMove(2);
