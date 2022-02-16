@@ -28,7 +28,7 @@ int BoxPos[3], CurBoxPos[3] = { 0, 0, 0 }, CurPos = 0;
 Tone Step[3];
 //move
 void Move(int M_Type, int TrSpeed = 500) {
-  int UpDwSpeed = 12000, MotSpeed = 1600;
+  int UpDwSpeed = 12000, MotSpeed = 1800;
   bool BUZZERVal = false;
   StandByf = false;
   switch (M_Type) {
@@ -129,6 +129,7 @@ void StandBy() {
 bool FwLine() {
   bool OLine = false;
   if (digitalRead(L_IR_SENSOR) && digitalRead(R_IR_SENSOR)) {
+    delay(10);
     Move(7);
     OLine = true;
   } else if (digitalRead(L_IR_SENSOR)) {
@@ -412,7 +413,7 @@ void loop() {
   if (BtEn) {
     bluetooth();
   } else {
-    if (!(TurnLeft || TurnRight || PickBox || PutBox || ReturnLine) && FwLine()) {
+    if (!(TurnLeft || TurnRight || PutBox || ReturnLine) && FwLine()) {
       if (Going) {
         if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
           CurPos++;
