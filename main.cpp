@@ -33,34 +33,29 @@ void Move(int M_Type, int TrSpeed = 500) {
   StandByf = false;
   switch (M_Type) {
   case 1 /*forward*/:
+  case 2 /*backwards*/:
+  if(M_Type == 1) {
     digitalWrite(dirPinM2, HIGH);
     digitalWrite(dirPinM1, LOW);
-    Step[2].stop();
-    Step[0].play(MotSpeed);
-    Step[1].play(MotSpeed);
-    break;
-
-  case 2 /*backwards*/:
+  } else {
     digitalWrite(dirPinM2, LOW);
     digitalWrite(dirPinM1, HIGH);
     BUZZERVal = true;
+  }
     Step[2].stop();
     Step[0].play(MotSpeed);
     Step[1].play(MotSpeed);
     break;
 
   case 3 /*sharp left*/:
+  case 4 /*sharp right*/:
+  if(M_Type == 3) {
     digitalWrite(dirPinM2, HIGH);
     digitalWrite(dirPinM1, HIGH);
-    BUZZERVal = true;
-    Step[2].stop();
-    Step[0].play(TrSpeed);
-    Step[1].play(TrSpeed);
-    break;
-
-  case 4 /*sharp right*/:
+  } else {
     digitalWrite(dirPinM2, LOW);
     digitalWrite(dirPinM1, LOW);
+  }
     BUZZERVal = true;
     Step[2].stop();
     Step[0].play(TrSpeed);
@@ -68,14 +63,12 @@ void Move(int M_Type, int TrSpeed = 500) {
     break;
 
   case 5 /*up*/:
-    digitalWrite(dirPinT, LOW);
-    Step[0].stop();
-    Step[1].stop();
-    Step[2].play(UpDwSpeed);
-    break;
-
   case 6 /*down*/:
+  if(M_Type == 5) {
+    digitalWrite(dirPinT, LOW);
+  } else {
     digitalWrite(dirPinT, HIGH);
+  }
     Step[0].stop();
     Step[1].stop();
     Step[2].play(UpDwSpeed);
@@ -89,19 +82,17 @@ void Move(int M_Type, int TrSpeed = 500) {
     break;
 
   case 8 /*slow left*/:
-    digitalWrite(dirPinM2, HIGH);
-    digitalWrite(dirPinM1, LOW);
-    Step[2].stop();
-    Step[0].play(MotSpeed / 2);
-    Step[1].play(MotSpeed);
-    break;
-
   case 9 /*slow right*/:
     digitalWrite(dirPinM2, HIGH);
     digitalWrite(dirPinM1, LOW);
     Step[2].stop();
+    if(M_Type == 8) {
+    Step[0].play(MotSpeed / 2);
+    Step[1].play(MotSpeed);
+  } else {
     Step[0].play(MotSpeed);
     Step[1].play(MotSpeed / 2);
+  }
     break;
   }
   digitalWrite(BUZZER, BUZZERVal);
@@ -142,7 +133,6 @@ bool FwLine() {
     Move(1);
     if (!digitalRead(C_IR_SENSOR)) {
       if ((millis() - t0) >= 500) {
-        //Serial.println("line not detected");
         EmStop();
       }
     } else {
@@ -173,11 +163,9 @@ bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
   switch (Ap_Type) {
   case 1 /*emergency stop*/:
     if ((ReadPxSensor(FrTrig, FrEcho) < 150) && (EnFrontSn)) {
-      //Serial.print("proximity sensor error front");
       EmStop();
     }
     if ((ReadPxSensor(BrTrig, BrEcho, 1) < 100)) {
-      //Serial.print("proximity sensor error back");
       EmStop();
     }
     break;
@@ -379,15 +367,10 @@ bool SerialBarcode() {
       Serial2.write(StartScan, sizeof(StartScan));
     }
   }
-  //Serial.print("shelf");
-  //Serial.print(BoxPos[0]);
-  //Serial.print("position");
-  //Serial.println(BoxPos[1]);
   return ScanFin;
 }
 //main program
 void setup() {
-  //Serial.begin(9600);
   Serial3.begin(9600);
   Serial2.begin(9600);
   pinMode(dirPinM1, OUTPUT);
