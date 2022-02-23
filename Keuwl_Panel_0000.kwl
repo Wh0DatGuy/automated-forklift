@@ -1,22 +1,22 @@
 Keuwlsoft Bluetooth Electronics Panel File
-2022-01-23 21:38:00
+2022-02-23 11:51:46
 2
 
 *.kwl
 set_grid_size(8,5)
+add_text_box(0,1,4,L,Remote Control,245,240,245,)
+add_text_box(1,0,2,L,Reset,245,240,245,)
+add_text_box(4,3,3,L,Up Down,245,240,245,)
 add_text_box(4,0,4,L,distance sensors,245,240,245,)
-add_text_box(4,3,4,L,forks,245,240,245,)
-add_text_box(0,1,3,L,move,245,240,245,)
-add_text_box(0,0,2,L,Reset,245,240,245,)
+add_button(0,2,10,A,S)
+add_button(0,3,4,L,S)
+add_button(1,3,14,O,)
+add_button(1,2,2,F,S)
+add_button(2,2,11,X,S)
+add_button(2,3,5,R,S)
+add_button(1,4,3,B,S)
 add_button(4,4,2,u,)
 add_button(5,4,3,d,)
-add_button(1,4,3,B,S)
-add_button(1,3,14,O,)
-add_button(0,3,4,L,S)
-add_button(2,3,5,R,S)
-add_button(1,2,2,F,S)
-add_button(0,2,10,A,S)
-add_button(2,2,11,X,S)
-add_button(2,0,1,C,)
-add_switch(4,1,1,V,U,0,0)
+add_button(0,0,1,C,)
+add_switch(5,1,1,V,U,0,0)
 set_panel_notes(,,,)
