@@ -434,7 +434,6 @@ void loop() {
   bluetooth();
   if (!BtEn) {
     if (!(TurnLeft || TurnRight || PutBox || ReturnLine) && FwLine()) {
-      Serial3.println("Horizontal line detected");
       if (Going) {
         if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
           CurPos++;
