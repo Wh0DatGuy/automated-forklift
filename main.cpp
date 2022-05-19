@@ -11,10 +11,10 @@
 #define L_IR_SENSOR 28
 #define C_IR_SENSOR 29
 #define R_IR_SENSOR 30
-#define FrEcho 31 //frontale
-#define FrTrig 32 
-#define BrEcho 33 //retro
-#define BrTrig 34
+#define BrEcho 31 //frontale
+#define BrTrig 32 
+#define FrEcho 33 //retro
+#define FrTrig 34
 #define M_Stop 39
 #define Em_Stop 40
 #define EndStop 45
@@ -26,7 +26,7 @@ bool StandByf = false, BtEn = true, Going = false, FSEn = true, PickBox = false,
 int BoxPos[3], CurBoxPos[3] = { 0, 0, 0 }, CurPos = 0;
 //lib
 Tone Step[3];
-//move
+//move (1 = forward, 2 = backwards, 3 = sharp left, 4 = sharp right, 5 = up, 6 = down, 7 = stop, 8 = slow left, 9 = slow right)
 void Move(int M_Type, int TrSpeed = 500) {
   int UpDwSpeed = 12000, MotSpeed = 1800;
   bool BUZZERVal = false;
@@ -34,14 +34,14 @@ void Move(int M_Type, int TrSpeed = 500) {
   switch (M_Type) {
   case 1 /*forward*/:
   case 2 /*backwards*/:
-  if(M_Type == 1) {
-    digitalWrite(dirPinM2, HIGH);
-    digitalWrite(dirPinM1, LOW);
-  } else {
-    digitalWrite(dirPinM2, LOW);
-    digitalWrite(dirPinM1, HIGH);
-    BUZZERVal = true;
-  }
+    if (M_Type == 1) {
+      digitalWrite(dirPinM2, HIGH);
+      digitalWrite(dirPinM1, LOW);
+    } else {
+      digitalWrite(dirPinM2, LOW);
+      digitalWrite(dirPinM1, HIGH);
+      BUZZERVal = true;
+    }
     Step[2].stop();
     Step[0].play(MotSpeed);
     Step[1].play(MotSpeed);
@@ -49,13 +49,13 @@ void Move(int M_Type, int TrSpeed = 500) {
 
   case 3 /*sharp left*/:
   case 4 /*sharp right*/:
-  if(M_Type == 3) {
-    digitalWrite(dirPinM2, HIGH);
-    digitalWrite(dirPinM1, HIGH);
-  } else {
-    digitalWrite(dirPinM2, LOW);
-    digitalWrite(dirPinM1, LOW);
-  }
+    if (M_Type == 3) {
+      digitalWrite(dirPinM2, HIGH);
+      digitalWrite(dirPinM1, HIGH);
+    } else {
+      digitalWrite(dirPinM2, LOW);
+      digitalWrite(dirPinM1, LOW);
+    }
     BUZZERVal = true;
     Step[2].stop();
     Step[0].play(TrSpeed);
@@ -64,11 +64,11 @@ void Move(int M_Type, int TrSpeed = 500) {
 
   case 5 /*up*/:
   case 6 /*down*/:
-  if(M_Type == 5) {
-    digitalWrite(dirPinT, LOW);
-  } else {
-    digitalWrite(dirPinT, HIGH);
-  }
+    if (M_Type == 5) {
+      digitalWrite(dirPinT, LOW);
+    } else {
+      digitalWrite(dirPinT, HIGH);
+    }
     Step[0].stop();
     Step[1].stop();
     Step[2].play(UpDwSpeed);
@@ -86,13 +86,13 @@ void Move(int M_Type, int TrSpeed = 500) {
     digitalWrite(dirPinM2, HIGH);
     digitalWrite(dirPinM1, LOW);
     Step[2].stop();
-    if(M_Type == 8) {
-    Step[0].play(MotSpeed / 2);
-    Step[1].play(MotSpeed);
-  } else {
-    Step[0].play(MotSpeed);
-    Step[1].play(MotSpeed / 2);
-  }
+    if (M_Type == 8) {
+      Step[0].play(MotSpeed / 2);
+      Step[1].play(MotSpeed);
+    } else {
+      Step[0].play(MotSpeed);
+      Step[1].play(MotSpeed / 2);
+    }
     break;
   }
   digitalWrite(BUZZER, BUZZERVal);
@@ -133,6 +133,7 @@ bool FwLine() {
     Move(1);
     if (!digitalRead(C_IR_SENSOR)) {
       if ((millis() - t0) >= 500) {
+        Serial3.println("Missing line");
         EmStop();
       }
     } else {
@@ -157,15 +158,21 @@ int ReadPxSensor(int Trig, int Echo, int Sel = 0) {
   }
   return Dist[Sel];
 }
-//auto proximity sensors
+//auto proximity sensors (1 = emergency stop, 2 = box approach, 3 = box departure)
 bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
   bool BoxReady = false;
   switch (Ap_Type) {
   case 1 /*emergency stop*/:
     if ((ReadPxSensor(FrTrig, FrEcho) < 150) && (EnFrontSn)) {
+      if (!BtEn) {
+        Serial3.println("Front Px error");
+      }
       EmStop();
     }
     if ((ReadPxSensor(BrTrig, BrEcho, 1) < 100)) {
+      if (!BtEn) {
+        Serial3.println("Back Px error");
+      }
       EmStop();
     }
     break;
@@ -184,8 +191,8 @@ bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
   }
   return BoxReady;
 }
-//edge function
-bool IfUpOrDwSn(byte Pin2Read, bool Mode) {//Mode = 0 (up), 1 (down)
+//edge function (0 = up, 1 = down)
+bool IfUpOrDwSn(byte Pin2Read, bool Mode) {
   static bool fState = false;
   bool ReturnVal = false;
   bool bn = digitalRead(Pin2Read);
@@ -200,7 +207,7 @@ bool IfUpOrDwSn(byte Pin2Read, bool Mode) {//Mode = 0 (up), 1 (down)
   }
   return ReturnVal;
 }
-//auto move
+//auto move (0 = auto up, 1 = auto down, 2 = line jump, 4 = 90 left, 5 = 90 right)
 bool AMove(int AM_Type, unsigned int DelayVal = 200) {
   static int IfCount;
   bool fTurn = false;
@@ -262,69 +269,99 @@ void(*Riavvia)(void) = 0;
 void bluetooth() {
   static bool OverWrite = false;
   while (Serial3.available()) {
-    switch (Serial3.read()) {
-    case 'F' /*forward*/:
-      Move(1);
-      break;
+    if (BtEn) {
+      switch (Serial3.read()) {
+      case 'F' /*forward*/:
+        Move(1);
+        break;
 
-    case 'L' /*left*/:
-      Move(3);
-      break;
+      case 'L' /*left*/:
+        Move(3);
+        break;
 
-    case 'A' /*slight left*/:
-      Move(8);
-      break;
+      case 'A' /*slight left*/:
+        Move(8);
+        break;
 
-    case 'R' /*right*/:
-      Move(4);
-      break;
+      case 'R' /*right*/:
+        Move(4);
+        break;
 
-    case 'X' /*slight right*/:
-      Move(9);
-      break;
+      case 'X' /*slight right*/:
+        Move(9);
+        break;
 
-    case 'B' /*back*/:
-      Move(2);
-      break;
+      case 'B' /*back*/:
+        Move(2);
+        break;
 
-    case 'S' /*stop*/:
-      Move(7);
-      break;
+      case 'S' /*stop*/:
+        Move(7);
+        break;
 
-    case 'U' /*dist off*/:
-      OverWrite = true;
-      break;
+      case 'U' /*dist off*/:
+        OverWrite = true;
+        break;
 
-    case 'V' /*dist on*/:
-      OverWrite = false;
-      break;
+      case 'V' /*dist on*/:
+        OverWrite = false;
+        break;
 
-    case 'u' /*up*/:
-      StandByf = false;
-      StandBy();
-      AMove(0);
-      break;
+      case 'u' /*up*/:
+        StandByf = false;
+        StandBy();
+        AMove(0);
+        break;
 
-    case 'd' /*down*/:
-      StandByf = false;
-      StandBy();
-      AMove(1);
-      break;
+      case 'd' /*down*/:
+        StandByf = false;
+        StandBy();
+        AMove(1);
+        break;
 
-    case 'O' /*OK*/:
-      digitalWrite(M_Stop, LOW);
-      Move(7);
-      digitalWrite(Em_Stop, LOW);
-      t0 = millis();
-      BtEn = false;
-      break;
+      case 'O' /*OK*/:
+        digitalWrite(M_Stop, LOW);
+        Move(7);
+        digitalWrite(Em_Stop, LOW);
+        t0 = millis();
+        BtEn = false;
+        break;
 
-    case 'C':
-      Riavvia();
-      break;
+      case 'C':
+        Riavvia();
+        break;
+
+      }
+    } else {
+      switch (Serial3.read()) {
+      case 'S' /*stop*/:
+        EmStop();
+        Move(7);
+        break;
+
+      case 'P' /*say current position*/:
+        Serial3.println("Current pos:");
+        Serial3.print("aisle ");
+        Serial3.println(CurBoxPos[0]);
+        Serial3.print("shelf ");
+        Serial3.println(CurBoxPos[1]);
+        Serial3.print("CurPos ");
+        Serial3.println(CurPos);
+        break;
+
+      case 'p' /*say box position*/:
+        Serial3.println("Box pos:");
+        Serial3.print("aisle ");
+        Serial3.println(BoxPos[0]);
+        Serial3.print("shelf ");
+        Serial3.println(BoxPos[1]);
+        break;
+      }
     }
   }
-  AProxSensor(1, !OverWrite);
+  if (BtEn) {
+    AProxSensor(1, !OverWrite);
+  }
   StandBy();
 }
 //barcode scanner
@@ -384,6 +421,7 @@ void setup() {
   pinMode(Em_Stop, OUTPUT);
   pinMode(FrTrig, OUTPUT);
   pinMode(BrTrig, OUTPUT);
+  digitalWrite(BUZZER, LOW);
   digitalWrite(FrTrig, LOW);
   digitalWrite(BrTrig, LOW);
   digitalWrite(M_Stop, LOW);
@@ -393,10 +431,10 @@ void setup() {
 }
 
 void loop() {
-  if (BtEn) {
-    bluetooth();
-  } else {
+  bluetooth();
+  if (!BtEn) {
     if (!(TurnLeft || TurnRight || PutBox || ReturnLine) && FwLine()) {
+      Serial3.println("Horizontal line detected");
       if (Going) {
         if (BoxPos[CurPos] == CurBoxPos[CurPos]) {
           CurPos++;
@@ -410,22 +448,22 @@ void loop() {
         if (CurPos == 3) {
           FSEn = false;
           PutBox = true;
+          CurPos--;
         }
-      } else {//add delay to line jump during return
-        if ((CurPos == 0) && (CurBoxPos[0] == 0)) {
-          AMove(2);
-          FSEn = false;
-          PickBox = true;
-        } else {
-          if (CurBoxPos[CurPos] == 0) {
-            CurPos--;
-            if (CurPos != 0) {
-             ReturnLine = true;
-            }
-          } else {
-            CurBoxPos[CurPos] --;
+      } else {
+        if (CurBoxPos[CurPos] == 0) {
+          if (CurPos == 0) {
             AMove(2);
+            FSEn = false;
+            PickBox = true;
+          } else {
+            ReturnLine = true;
+            CurPos--;
           }
+        } else {
+          CurBoxPos[CurPos] --;
+          AMove(2);
+
         }
       }
     }
@@ -459,7 +497,7 @@ void loop() {
       }
     } else if (ReturnLine) {
       Move(1);
-      if(IfUpOrDwSn(C_IR_SENSOR, 0)) {
+      if (IfUpOrDwSn(C_IR_SENSOR, 1)) {
         TurnLeft = true;
         ReturnLine = false;
       }
