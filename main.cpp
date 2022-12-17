@@ -28,7 +28,7 @@ int BoxPos[3], CurBoxPos[3] = { 0, 0, 0 }, CurPos = 0;
 Tone Step[3];
 //move (1 = forward, 2 = backwards, 3 = sharp left, 4 = sharp right, 5 = up, 6 = down, 7 = stop, 8 = slow left, 9 = slow right)
 void Move(int M_Type, int TrSpeed = 500) {
-  int UpDwSpeed = 12000, MotSpeed = 1800;
+  int UpDwSpeed = 12000, MotSpeed = 1500;
   bool BUZZERVal = false;
   StandByf = false;
   switch (M_Type) {
@@ -120,7 +120,7 @@ void StandBy() {
 bool FwLine() {
   bool OLine = false;
   if (digitalRead(L_IR_SENSOR) && digitalRead(R_IR_SENSOR)) {
-    delay(10);
+    delay(50);
     Move(7);
     OLine = true;
   } else if (digitalRead(L_IR_SENSOR)) {
@@ -132,7 +132,7 @@ bool FwLine() {
   } else {
     Move(1);
     if (!digitalRead(C_IR_SENSOR)) {
-      if ((millis() - t0) >= 500) {
+      if ((millis() - t0) >= 600) {
         Serial3.println("Missing line");
         EmStop();
       }
@@ -178,7 +178,7 @@ bool AProxSensor(int Ap_Type, bool EnFrontSn = true) {
     break;
 
   case 2 /*box aproaching at pick-up*/:
-    if (ReadPxSensor(FrTrig, FrEcho) < 25) {
+    if (ReadPxSensor(FrTrig, FrEcho) < 35) {
       BoxReady = true;
     }
     break;
